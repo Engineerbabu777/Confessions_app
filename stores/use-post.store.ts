@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { Post, PostCategory, ReactionType } from "@/types/post";
+import { Reply } from "@/types/replies";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 
@@ -32,6 +33,8 @@ interface PostsState {
     myCampus: string | null;
     showAllCampus: boolean;
     selectedCategory: PostCategory | "all";
+    replies: Record<string, Reply[]>;
+    loadingReplies: boolean;
 
     setMyCampus: (campus: string) => void;
     toggleShowAllCampus: () => void;
@@ -58,12 +61,16 @@ interface PostsState {
         postId: string
     ) => Promise<{ error: string | null }>;
 
+    fetchReplies: (postId: string) => Promise<{ data: Reply[]; error: string | null }>;
+    addReply: (postId: string, content: string) => Promise<{ error: string | null; data?: Reply }>;
+
     upsertPost: (
         post: Post
     ) => void;
 
     subscribeToRealtime: () => () => void;
 }
+
 
 export const usePostsStore = create<PostsState>((set, get) => ({
     posts: [],
@@ -75,6 +82,9 @@ export const usePostsStore = create<PostsState>((set, get) => ({
     myCampus: null,
     showAllCampus: false,
     selectedCategory: "all",
+    replies: {},
+    loadingReplies: false,
+
 
     setSelectedCategory: (category: PostCategory | "all") => {
         set({ selectedCategory: category });
@@ -363,6 +373,63 @@ export const usePostsStore = create<PostsState>((set, get) => ({
             return { error: err?.message || "Failed to report post" };
         }
     },
+
+    fetchReplies: async (postId: string) => {
+        set({ loadingReplies: true });
+        const { data, error } = await supabase
+            .from("replies")
+            .select("*")
+            .eq("post_id", postId)
+            .order("created_at", { ascending: true });
+
+        if (error) {
+            console.error("Error fetching replies:", error);
+            set({ loadingReplies: false });
+            return { data: [], error: error.message };
+        }
+
+        const list = (data as Reply[]) || [];
+        set((state) => ({
+            replies: { ...state.replies, [postId]: list },
+            loadingReplies: false,
+        }));
+        return { data: list, error: null };
+    },
+
+    addReply: async (postId: string, content: string) => {
+        const trimmed = content.trim();
+        if (!trimmed) {
+            return { error: "Reply cannot be empty." };
+        }
+        if (trimmed.length > 200) {
+            return { error: "Reply cannot exceed 200 characters." };
+        }
+
+        const { data, error } = await supabase
+            .from("replies")
+            .insert([{ post_id: postId, content: trimmed }])
+            .select("*")
+            .single();
+
+        if (error) {
+            console.error("Error adding reply:", error);
+            return { error: error.message };
+        }
+
+        const newReply = data as Reply;
+        set((state) => {
+            const current = state.replies[postId] || [];
+            return {
+                replies: {
+                    ...state.replies,
+                    [postId]: [...current, newReply],
+                },
+            };
+        });
+
+        return { error: null, data: newReply };
+    },
+
 
     upsertPost: (post: Post) => {
         set((state) => {

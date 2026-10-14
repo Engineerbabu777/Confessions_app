@@ -9,16 +9,17 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePostsStore } from "@/stores/use-post.store";
+import { Post } from "@/types/post";
 import { Header } from "@/components/Header";
 import { CategoryTabs } from "@/components/CategoryTabs";
 import { PostCard } from "@/components/PostCard";
 import { CreatePostModal } from "@/components/CreatePostModal";
 import { CampusSelectorModal } from "@/components/CampusSelectorModal";
+import { RepliesModal } from "@/components/RepliesModal";
 import { EmptyFeed } from "@/components/EmptyFeed";
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
 import * as Haptics from "expo-haptics";
-
 
 export default function Index() {
     const insets = useSafeAreaInsets();
@@ -32,12 +33,16 @@ export default function Index() {
         myCampus,
         showAllCampus,
         selectedCategory,
+        replies,
+        loadingReplies,
         initializeStore,
         fetchPosts,
         fetchMorePosts,
         toggleReaction,
         reportPost,
         addPost,
+        fetchReplies,
+        addReply,
         subscribeToRealtime,
         setMyCampus,
         toggleShowAllCampus,
@@ -46,6 +51,8 @@ export default function Index() {
 
     const [createModalVisible, setCreateModalVisible] = useState(false);
     const [campusModalVisible, setCampusModalVisible] = useState(false);
+    const [selectedPostForReplies, setSelectedPostForReplies] = useState<Post | null>(null);
+    const [repliesModalVisible, setRepliesModalVisible] = useState(false);
 
     // Initialize store & Supabase Realtime subscription
     useEffect(() => {
@@ -65,8 +72,15 @@ export default function Index() {
     }, [posts, selectedCategory]);
 
     const handleOpenCreate = () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        try {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        } catch {}
         setCreateModalVisible(true);
+    };
+
+    const handleOpenReplies = (post: Post) => {
+        setSelectedPostForReplies(post);
+        setRepliesModalVisible(true);
     };
 
     return (
@@ -98,8 +112,10 @@ export default function Index() {
                     <PostCard
                         post={item}
                         userReaction={userReactions[item.id]}
+                        replyCount={replies[item.id]?.length}
                         onToggleReaction={toggleReaction}
                         onReportPost={reportPost}
+                        onPressReply={handleOpenReplies}
                     />
                 )}
                 contentContainerStyle={{
@@ -154,7 +170,6 @@ export default function Index() {
                     onPress={handleOpenCreate}
                     className="flex-row items-center bg-ember-500 px-5 py-3.5 rounded-full"
                 >
-
                     <Ionicons name="flame" size={20} color="#FFFFFF" style={{ marginRight: 6 }} />
                     <Text className="text-white font-bold text-[15px]">
                         Confess
@@ -171,7 +186,6 @@ export default function Index() {
                 onSelectCampus={setMyCampus}
             />
 
-
             {/* Campus Selector Modal */}
             <CampusSelectorModal
                 visible={campusModalVisible}
@@ -180,6 +194,21 @@ export default function Index() {
                 onClose={() => setCampusModalVisible(false)}
                 onSelectCampus={setMyCampus}
                 onToggleShowAll={toggleShowAllCampus}
+            />
+
+            {/* Replies & Discussion Modal */}
+            <RepliesModal
+                visible={repliesModalVisible}
+                post={selectedPostForReplies}
+                replies={
+                    selectedPostForReplies
+                        ? replies[selectedPostForReplies.id] || []
+                        : []
+                }
+                loading={loadingReplies}
+                onClose={() => setRepliesModalVisible(false)}
+                onFetchReplies={fetchReplies}
+                onAddReply={addReply}
             />
         </View>
     );
